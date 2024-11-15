@@ -1,0 +1,6 @@
+- op: add
+  path: /spec/template/spec/containers/0/volumeMounts/-
+  value: {"name":"olmv1-metrics-cert", "readOnly": true, "mountPath":"/var/metrics/certs/"}
+- op: add
+  path: /spec/template/spec/volumes/-
+  value: {"name":"olmv1-metrics-cert", "secret":{"secretName":"olmv1-metrics-cert", "optional": false, "items": [{"key": "ca.crt", "path": "olm-metrics-ca.crt"}]}}
