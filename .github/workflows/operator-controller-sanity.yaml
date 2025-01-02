@@ -16,8 +16,9 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: "go.mod"
+          go-version-file: operator-controller/go.mod
       - name: Run verification checks
+        working-directory: operator-controller
         run: make verify
   lint:
     runs-on: ubuntu-latest
@@ -26,7 +27,8 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: "go.mod"
+          go-version-file: operator-controller/go.mod
 
       - name: Run golangci linting checks
+        working-directory: operator-controller
         run: make lint GOLANGCI_LINT_ARGS="--out-format colored-line-number"

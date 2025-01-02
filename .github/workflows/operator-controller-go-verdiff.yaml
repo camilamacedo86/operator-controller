@@ -13,4 +13,5 @@ jobs:
       with:
         fetch-depth: 0
     - name: Check golang version
+      working-directory: operator-controller
       run: hack/tools/check-go-version.sh "${{ github.event.pull_request.base.sha }}"

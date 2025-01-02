@@ -17,3 +17,4 @@ jobs:
           github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
           labeled: epic, v1.0, v1.x
           label-operator: OR
+

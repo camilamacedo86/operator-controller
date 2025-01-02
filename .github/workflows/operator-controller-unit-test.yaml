@@ -17,13 +17,15 @@ jobs:
 
     - uses: actions/setup-go@v5
       with:
-        go-version-file: go.mod
+        go-version-file: operator-controller/go.mod
 
     - name: Run basic unit tests
+      working-directory: operator-controller
       run: |
         make test-unit
 
     - uses: codecov/codecov-action@v5
+      working-directory: operator-controller
       with:
         disable_search: true
         files: coverage/unit.out

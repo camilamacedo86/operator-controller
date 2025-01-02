@@ -13,6 +13,7 @@ jobs:
 
     - uses: actions/setup-go@v5
       with:
-        go-version-file: go.mod
+        go-version-file: operator-controller/go.mod
 
     - uses: joelanford/go-apidiff@main
+      working-directory: operator-controller

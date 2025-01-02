@@ -39,8 +39,10 @@ jobs:
 
       # Deploy on merge
       - run: make deploy-docs
+        working-directory: operator-controller
         if: github.event_name == 'push'
 
       # Only build on everything else
       - run: make build-docs
+        working-directory: operator-controller
         if: github.event_name != 'push'

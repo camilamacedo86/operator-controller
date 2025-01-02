@@ -16,9 +16,10 @@ jobs:
 
     - uses: actions/setup-go@v5
       with:
-        go-version-file: go.mod
+        go-version-file: operator-controller/go.mod
 
     - name: Run the extension developer e2e test
+      working-directory: operator-controller
       run: make extension-developer-e2e
 
   e2e-kind:
@@ -30,13 +31,15 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: operator-controller/go.mod
 
       - name: Run e2e tests
+        working-directory: operator-controller
         run: ARTIFACT_PATH=/tmp/artifacts make test-e2e
 
       - uses: cytopia/upload-artifact-retry-action@v0.1.7
         if: failure()
+        working-directory: operator-controller
         with:
           name: e2e-artifacts
           path: /tmp/artifacts/
@@ -55,7 +58,8 @@ jobs:
 
     - uses: actions/setup-go@v5
       with:
-        go-version-file: go.mod
+        go-version-file: operator-controller/go.mod
 
     - name: Run the upgrade e2e test
+      working-directory: operator-controller
       run: make test-upgrade-e2e
