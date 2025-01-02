@@ -15,8 +15,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: "go.mod"
-      - run: make test-unit
+          go-version-file: catalogd/go.mod
+
+      - name: Run Unit Tests
+        working-directory: catalogd
+        run: make test-unit
 
       - uses: codecov/codecov-action@v5
         with:

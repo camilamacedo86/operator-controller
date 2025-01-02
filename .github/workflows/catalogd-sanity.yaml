@@ -15,8 +15,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: "go.mod"
+          go-version-file: catalogd/go.mod
       - name: Run verification checks
+        working-directory: catalogd
         run: make verify
   lint:
     runs-on: ubuntu-latest
@@ -24,6 +25,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: "go.mod"
+          go-version-file: catalogd/go.mod
       - name: Run lint checks
+        working-directory: catalogd
         run: make lint GOLANGCI_LINT_ARGS="--out-format github-actions"
