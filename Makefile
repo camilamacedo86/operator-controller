@@ -236,10 +236,11 @@ kind-load: $(KIND) #EXHELP Loads the currently constructed images into the KIND 
 	$(CONTAINER_RUNTIME) save quay.io/operator-framework/catalogd:devel | $(KIND) load image-archive /dev/stdin --name $(KIND_CLUSTER_NAME)
 
 .PHONY: kind-deploy
-kind-deploy: export MANIFEST := ./operator-controller.yaml
-kind-deploy: manifests generate-catalogd $(KUSTOMIZE) #EXHELP Install controller and dependencies, including catalogd, onto the kind cluster.
+kind-deploy: export MANIFEST := ./olmv1.yaml
+kind-deploy: manifests generate-catalogd $(KUSTOMIZE)
 	$(KUSTOMIZE) build $(KUSTOMIZE_BUILD_DIR) > operator-controller.yaml
 	cd catalogd && $(KUSTOMIZE) build config/overlays/cert-manager > catalogd.yaml
+	cat catalogd/catalogd.yaml operator-controller.yaml > $(MANIFEST)
 	envsubst '$$CERT_MGR_VERSION,$$INSTALL_DEFAULT_CATALOGS,$$MANIFEST' < scripts/install.tpl.sh | bash -s
 
 .PHONY: generate-catalogd
@@ -337,12 +338,11 @@ release: $(GORELEASER) #EXHELP Runs goreleaser for the operator-controller. By d
 	$(GORELEASER) $(GORELEASER_ARGS)
 
 .PHONY: quickstart
-quickstart: export MANIFEST := ./operator-controller.yaml
-quickstart: $(KUSTOMIZE) manifests generate-catalogd #EXHELP Generate the installation release manifests and scripts.
-	$(KUSTOMIZE) build $(KUSTOMIZE_BUILD_DIR) | sed "s/:devel/:$(VERSION)/g" > operator-controller.yaml
-	cd catalogd && $(KUSTOMIZE) build config/overlays/cert-manager > catalogd.yaml
+quickstart: export MANIFEST := ./olmv1.yaml
+quickstart: $(KUSTOMIZE) manifests generate-catalogd #EXHELP Generate the unified installation release manifests and scripts.
+	$(KUSTOMIZE) build $(KUSTOMIZE_BUILD_DIR) > $(MANIFEST)
+	cd catalogd && $(KUSTOMIZE) build config/overlays/cert-manager >> ../$(MANIFEST)
 	envsubst '$$CERT_MGR_VERSION,$$INSTALL_DEFAULT_CATALOGS,$$MANIFEST' < scripts/install.tpl.sh > install.sh
-
 
 ##@ Docs
 

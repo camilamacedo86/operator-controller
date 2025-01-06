@@ -20,7 +20,7 @@ coverage
 
 # Release output
 dist/**
-operator-controller.yaml
+olmv1.yaml
 install.sh
 
 # Kubernetes Generated files - skip generated files, except for vendored files
