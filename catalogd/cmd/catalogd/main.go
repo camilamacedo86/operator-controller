@@ -143,12 +143,12 @@ func main() {
 	}
 
 	if (certFile != "" && keyFile == "") || (certFile == "" && keyFile != "") {
-		setupLog.Error(nil, "unable to configure TLS certificates: tls-cert and tls-key flags must be used together")
+		setupLog.Error(fmt.Errorf("unable to configure TLS certificates"), "tls-cert and tls-key flags must be used together")
 		os.Exit(1)
 	}
 
 	if metricsAddr != "" && certFile == "" && keyFile == "" {
-		setupLog.Error(nil, "metrics-bind-address requires tls-cert and tls-key flags to be set")
+		setupLog.Error(fmt.Errorf("unable to configure metrics-bind-address"), "metrics-bind-address requires tls-cert and tls-key flags to be set")
 		os.Exit(1)
 	}
 
