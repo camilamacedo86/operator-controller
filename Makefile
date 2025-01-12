@@ -95,8 +95,12 @@ help-extended: #HELP Display extended help.
 #SECTION Development
 
 .PHONY: lint
-lint: $(GOLANGCI_LINT) #HELP Run golangci linter.
+lint: lint-custom $(GOLANGCI_LINT) #HELP Run golangci linter.
 	$(GOLANGCI_LINT) run --build-tags $(GO_BUILD_TAGS) $(GOLANGCI_LINT_ARGS)
+
+.PHONY: lint-custom
+lint-custom: custom-linter-build
+	go vet -vettool=./bin/custom-linter ./...
 
 .PHONY: tidy
 tidy: #HELP Update dependencies.
@@ -284,6 +288,11 @@ BINARIES=operator-controller
 
 $(BINARIES):
 	go build $(GO_BUILD_FLAGS) -tags '$(GO_BUILD_TAGS)' -ldflags '$(GO_BUILD_LDFLAGS)' -gcflags '$(GO_BUILD_GCFLAGS)' -asmflags '$(GO_BUILD_ASMFLAGS)' -o $(BUILDBIN)/$@ ./cmd/$@
+
+.PHONY: custom-linter-build
+custom-linter-build:
+	cd ./hack/ci/custom-linters/cmd/ && go build -o ../../../../bin/custom-linter
+
 
 .PHONY: build-deps
 build-deps: manifests generate fmt vet
