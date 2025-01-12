@@ -95,8 +95,17 @@ help-extended: #HELP Display extended help.
 #SECTION Development
 
 .PHONY: lint
-lint: $(GOLANGCI_LINT) #HELP Run golangci linter.
+lint: lint-custom $(GOLANGCI_LINT) #HELP Run golangci linter.
 	$(GOLANGCI_LINT) run --build-tags $(GO_BUILD_TAGS) $(GOLANGCI_LINT_ARGS)
+
+.PHONY: custom-linter-build
+LINTER_DIR := ./hack/ci/custom-linters/cmd
+custom-linter-build: # HELP Build custom linter
+	cd $(LINTER_DIR) && go build -tags '$(GO_BUILD_TAGS)' -o $(ROOT_DIR)/bin/custom-linter
+
+.PHONY: lint-custom #HELP Call custom linter for the project
+lint-custom: custom-linter-build
+	go vet -tags=$(GO_BUILD_TAGS) -vettool=./bin/custom-linter ./...
 
 .PHONY: tidy
 tidy: #HELP Update dependencies.
