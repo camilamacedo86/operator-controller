@@ -74,6 +74,7 @@ func newClient(t *testing.T) client.Client {
 
 type MockInstalledBundleGetter struct {
 	bundle *controllers.InstalledBundle
+	err    error
 }
 
 func (m *MockInstalledBundleGetter) SetBundle(bundle *controllers.InstalledBundle) {
@@ -81,6 +82,9 @@ func (m *MockInstalledBundleGetter) SetBundle(bundle *controllers.InstalledBundl
 }
 
 func (m *MockInstalledBundleGetter) GetInstalledBundle(ctx context.Context, ext *ocv1.ClusterExtension) (*controllers.InstalledBundle, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
 	return m.bundle, nil
 }
 
@@ -137,15 +141,24 @@ func (m *MockManagedContentCache) Watch(_ context.Context, _ cmcache.Watcher, _ 
 	}
 	return nil
 }
+func newClientAndReconciler(t *testing.T, opts ...func(*controllers.ClusterExtensionReconciler)) (client.Client, *controllers.ClusterExtensionReconciler) {
+	sch := apimachineryruntime.NewScheme()
+	require.NoError(t, ocv1.AddToScheme(sch))
 
-func newClientAndReconciler(t *testing.T) (client.Client, *controllers.ClusterExtensionReconciler) {
-	cl := newClient(t)
+	cl, err := client.New(config, client.Options{Scheme: sch})
+	require.NoError(t, err)
+	require.NotNil(t, cl)
 
 	reconciler := &controllers.ClusterExtensionReconciler{
 		Client:                cl,
 		InstalledBundleGetter: &MockInstalledBundleGetter{},
 		Finalizers:            crfinalizer.NewFinalizers(),
 	}
+
+	for _, opt := range opts {
+		opt(reconciler)
+	}
+
 	return cl, reconciler
 }
 

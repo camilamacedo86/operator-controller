@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/operator-framework/operator-controller/internal/authentication"
 	"io/fs"
 	"strings"
 	"time"
@@ -50,7 +51,6 @@ import (
 
 	ocv1 "github.com/operator-framework/operator-controller/api/v1"
 	catalogd "github.com/operator-framework/operator-controller/catalogd/api/v1"
-	"github.com/operator-framework/operator-controller/internal/authentication"
 	"github.com/operator-framework/operator-controller/internal/bundleutil"
 	"github.com/operator-framework/operator-controller/internal/conditionsets"
 	"github.com/operator-framework/operator-controller/internal/contentmanager"
@@ -209,7 +209,7 @@ func (r *ClusterExtensionReconciler) reconcile(ctx context.Context, ext *ocv1.Cl
 		setInstallStatus(ext, nil)
 		var saerr *authentication.ServiceAccountNotFoundError
 		if errors.As(err, &saerr) {
-			setInstalledStatusConditionUnknown(ext, saerr.Error())
+			setInstalledStatusConditionUnknown(ext, fmt.Sprintf("%s", saerr))
 			setStatusProgressing(ext, errors.New("installation cannot proceed due to missing ServiceAccount"))
 			return ctrl.Result{}, err
 		}

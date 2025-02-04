@@ -106,6 +106,7 @@ func (t *TokenGetter) getToken(ctx context.Context, key types.NamespacedName) (*
 		if errors.IsNotFound(err) {
 			return nil, &ServiceAccountNotFoundError{ServiceAccountName: key.Name, ServiceAccountNamespace: key.Namespace}
 		}
+		return nil, err
 	}
 	return &req.Status, nil
 }
