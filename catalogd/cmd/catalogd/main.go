@@ -20,6 +20,12 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"github.com/operator-framework/operator-controller/internal/controllers/core"
+	"github.com/operator-framework/operator-controller/internal/garbagecollection"
+	catalogdmetrics "github.com/operator-framework/operator-controller/internal/metrics"
+	"github.com/operator-framework/operator-controller/internal/serverutil"
+	"github.com/operator-framework/operator-controller/internal/source"
+	"github.com/operator-framework/operator-controller/internal/webhook"
 	"log"
 	"net/url"
 	"os"
@@ -54,16 +60,10 @@ import (
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	catalogdv1 "github.com/operator-framework/operator-controller/catalogd/api/v1"
-	corecontrollers "github.com/operator-framework/operator-controller/catalogd/internal/controllers/core"
-	"github.com/operator-framework/operator-controller/catalogd/internal/features"
-	"github.com/operator-framework/operator-controller/catalogd/internal/garbagecollection"
-	catalogdmetrics "github.com/operator-framework/operator-controller/catalogd/internal/metrics"
-	"github.com/operator-framework/operator-controller/catalogd/internal/serverutil"
-	"github.com/operator-framework/operator-controller/catalogd/internal/source"
-	"github.com/operator-framework/operator-controller/catalogd/internal/storage"
-	"github.com/operator-framework/operator-controller/catalogd/internal/version"
-	"github.com/operator-framework/operator-controller/catalogd/internal/webhook"
+	"github.com/operator-framework/operator-controller/internal/features"
 	"github.com/operator-framework/operator-controller/internal/fsutil"
+	"github.com/operator-framework/operator-controller/internal/storage"
+	"github.com/operator-framework/operator-controller/internal/version"
 )
 
 var (
@@ -127,7 +127,7 @@ func main() {
 	pflag.Parse()
 
 	if catalogdVersion {
-		fmt.Printf("%#v\n", version.Version())
+		fmt.Printf("%#v\n", version.String())
 		os.Exit(0)
 	}
 
@@ -324,7 +324,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&corecontrollers.ClusterCatalogReconciler{
+	if err = (&core.ClusterCatalogReconciler{
 		Client:   mgr.GetClient(),
 		Unpacker: unpacker,
 		Storage:  localStorage,
@@ -335,7 +335,7 @@ func main() {
 
 	if globalPullSecretKey != nil {
 		setupLog.Info("creating SecretSyncer controller for watching secret", "Secret", globalPullSecret)
-		err := (&corecontrollers.PullSecretReconciler{
+		err := (&core.PullSecretReconciler{
 			Client:       mgr.GetClient(),
 			AuthFilePath: authFilePath,
 			SecretKey:    *globalPullSecretKey,

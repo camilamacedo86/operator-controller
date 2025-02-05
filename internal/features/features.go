@@ -9,7 +9,12 @@ const (
 	// Add new feature gates constants (strings)
 	// Ex: SomeFeature featuregate.Feature = "SomeFeature"
 	PreflightPermissions featuregate.Feature = "PreflightPermissions"
+	APIV1QueryHandler                        = featuregate.Feature("APIV1QueryHandler")
 )
+
+var catalogdFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
+	APIV1QueryHandler: {Default: false, PreRelease: featuregate.Alpha},
+}
 
 var operatorControllerFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
 	// Add new feature gate definitions
@@ -23,6 +28,10 @@ var operatorControllerFeatureGates = map[featuregate.Feature]featuregate.Feature
 
 var OperatorControllerFeatureGate featuregate.MutableFeatureGate = featuregate.NewFeatureGate()
 
+var CatalogdFeatureGate featuregate.MutableFeatureGate = featuregate.NewFeatureGate()
+
 func init() {
 	utilruntime.Must(OperatorControllerFeatureGate.Add(operatorControllerFeatureGates))
+	utilruntime.Must(CatalogdFeatureGate.Add(catalogdFeatureGates))
+
 }
