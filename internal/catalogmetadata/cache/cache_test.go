@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 
@@ -228,4 +229,58 @@ func equalFilesystems(expected, actual fs.FS) error {
 		}
 	}
 	return errors.Join(cmpErrs...)
+}
+
+// TestFilesystemCacheConcurrentAccess verifies that the catalogd cache can handle
+// concurrent read and write operations safely without race conditions or data corruption.
+//
+// This test simulates multiple goroutines performing the following actions:
+//   - Concurrent Writes: Multiple workers simultaneously store different versions of the
+//     same catalog in the cache using `Put()`. Errors are collected via a channel.
+//   - Ensuring Writes Succeeded: The test waits for all writes to finish and checks that
+//     no errors occurred during concurrent writing.
+//   - Concurrent Reads: After all writes are complete, multiple workers try to retrieve
+//     their respective cache entries using `Get()`, ensuring that all data is correctly
+//     stored and retrievable in a thread-safe manner.
+func TestFilesystemCacheConcurrentAccess(t *testing.T) {
+	const (
+		catalog = "concur-test-catalog"
+		workers = 10
+	)
+
+	cacheDir := t.TempDir()
+	c := cache.NewFilesystemCache(cacheDir)
+
+	errCh := make(chan error, workers)
+
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			ref := fmt.Sprintf("fake/catalog@sha256:worker%d", workerID)
+			_, err := c.Put(catalog, ref, defaultContent(), nil)
+			errCh <- err
+		}(i)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		require.NoError(t, err, "write operation failed")
+	}
+
+	var readWg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		readWg.Add(1)
+		go func(workerID int) {
+			defer readWg.Done()
+			ref := fmt.Sprintf("fake/catalog@sha256:worker%d", workerID)
+			_, err := c.Get(catalog, ref)
+			assert.NoError(t, err, "read operation failed")
+		}(i)
+	}
+
+	readWg.Wait()
 }
