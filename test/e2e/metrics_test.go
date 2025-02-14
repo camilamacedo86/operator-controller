@@ -25,10 +25,12 @@ import (
 	"github.com/operator-framework/operator-controller/test/utils"
 )
 
-// TestOperatorControllerMetricsExportedEndpoint verifies that the metrics endpoint for the operator controller
-func TestOperatorControllerMetricsExportedEndpoint(t *testing.T) {
+// TestMetricsExportedEndpoint verifies that the metrics endpoint for catalogd and operator-controller
+func TestMetricsExportedEndpoint(t *testing.T) {
 	client := utils.FindK8sClient(t)
-	config := NewMetricsTestConfig(
+
+	t.Log("Checking Metrics Endpoint For OperatorController")
+	configControllerRuntime := NewMetricsTestConfig(
 		t, client,
 		"control-plane=operator-controller-controller-manager",
 		"operator-controller-metrics-reader",
@@ -37,14 +39,10 @@ func TestOperatorControllerMetricsExportedEndpoint(t *testing.T) {
 		"oper-curl-metrics",
 		"https://operator-controller-service.NAMESPACE.svc.cluster.local:8443/metrics",
 	)
+	configControllerRuntime.run()
 
-	config.run()
-}
-
-// TestCatalogdMetricsExportedEndpoint verifies that the metrics endpoint for catalogd
-func TestCatalogdMetricsExportedEndpoint(t *testing.T) {
-	client := utils.FindK8sClient(t)
-	config := NewMetricsTestConfig(
+	t.Log("Checking Metrics Endpoint For CatalogD")
+	configCatalogd := NewMetricsTestConfig(
 		t, client,
 		"control-plane=catalogd-controller-manager",
 		"catalogd-metrics-reader",
@@ -53,8 +51,10 @@ func TestCatalogdMetricsExportedEndpoint(t *testing.T) {
 		"catalogd-curl-metrics",
 		"https://catalogd-service.NAMESPACE.svc.cluster.local:7443/metrics",
 	)
+	configCatalogd.run()
 
-	config.run()
+	defer configControllerRuntime.cleanup()
+	defer configCatalogd.cleanup()
 }
 
 // MetricsTestConfig holds the necessary configurations for testing metrics endpoints.
@@ -92,7 +92,6 @@ func (c *MetricsTestConfig) run() {
 	token := c.getServiceAccountToken()
 	c.createCurlMetricsPod()
 	c.validate(token)
-	defer c.cleanup()
 }
 
 // createMetricsClusterRoleBinding to binding and expose the metrics
