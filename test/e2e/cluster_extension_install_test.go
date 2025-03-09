@@ -377,6 +377,9 @@ func TestClusterExtensionInstallRegistry(t *testing.T) {
 					assert.NotEmpty(ct, clusterExtension.Status.Install.Bundle)
 				}
 			}, pollDuration, pollInterval)
+
+			FetchCatalogdMetricsExportedEndpoint(t)
+			FetchOperatorControllerMetricsExportedEndpoint(t)
 		})
 	}
 }
@@ -455,6 +458,9 @@ location = "docker-registry.operator-controller-e2e.svc.cluster.local:5000"`,
 			assert.NotEmpty(ct, clusterExtension.Status.Install.Bundle)
 		}
 	}, pollDuration, pollInterval)
+
+	FetchCatalogdMetricsExportedEndpoint(t)
+	FetchOperatorControllerMetricsExportedEndpoint(t)
 }
 
 func TestClusterExtensionInstallRegistryMultipleBundles(t *testing.T) {
@@ -505,6 +511,9 @@ func TestClusterExtensionInstallRegistryMultipleBundles(t *testing.T) {
 			assert.Contains(ct, cond.Message, "in multiple catalogs with the same priority [extra-test-catalog test-catalog]")
 		}
 	}, pollDuration, pollInterval)
+
+	FetchCatalogdMetricsExportedEndpoint(t)
+	FetchOperatorControllerMetricsExportedEndpoint(t)
 }
 
 func TestClusterExtensionBlockInstallNonSuccessorVersion(t *testing.T) {
@@ -568,6 +577,9 @@ func TestClusterExtensionBlockInstallNonSuccessorVersion(t *testing.T) {
 			assert.Equal(ct, "error upgrading from currently installed version \"1.0.0\": no bundles found for package \"test\" matching version \"1.2.0\"", cond.Message)
 		}
 	}, pollDuration, pollInterval)
+
+	FetchCatalogdMetricsExportedEndpoint(t)
+	FetchOperatorControllerMetricsExportedEndpoint(t)
 }
 
 func TestClusterExtensionForceInstallNonSuccessorVersion(t *testing.T) {
@@ -618,6 +630,9 @@ func TestClusterExtensionForceInstallNonSuccessorVersion(t *testing.T) {
 			assert.Equal(ct, ocv1.ReasonSucceeded, cond.Reason)
 		}
 	}, pollDuration, pollInterval)
+
+	FetchCatalogdMetricsExportedEndpoint(t)
+	FetchOperatorControllerMetricsExportedEndpoint(t)
 }
 
 func TestClusterExtensionInstallSuccessorVersion(t *testing.T) {
@@ -666,6 +681,9 @@ func TestClusterExtensionInstallSuccessorVersion(t *testing.T) {
 			assert.Equal(ct, ocv1.ReasonSucceeded, cond.Reason)
 		}
 	}, pollDuration, pollInterval)
+
+	FetchCatalogdMetricsExportedEndpoint(t)
+	FetchOperatorControllerMetricsExportedEndpoint(t)
 }
 
 func TestClusterExtensionInstallReResolvesWhenCatalogIsPatched(t *testing.T) {
@@ -733,6 +751,9 @@ func TestClusterExtensionInstallReResolvesWhenCatalogIsPatched(t *testing.T) {
 			assert.Equal(ct, ocv1.ReasonSucceeded, cond.Reason)
 		}
 	}, pollDuration, pollInterval)
+
+	FetchCatalogdMetricsExportedEndpoint(t)
+	FetchOperatorControllerMetricsExportedEndpoint(t)
 }
 
 func TestClusterExtensionInstallReResolvesWhenNewCatalog(t *testing.T) {
@@ -814,6 +835,9 @@ func TestClusterExtensionInstallReResolvesWhenNewCatalog(t *testing.T) {
 			assert.Equal(ct, ocv1.ReasonSucceeded, cond.Reason)
 		}
 	}, pollDuration, pollInterval)
+
+	FetchCatalogdMetricsExportedEndpoint(t)
+	FetchOperatorControllerMetricsExportedEndpoint(t)
 }
 
 func TestClusterExtensionInstallReResolvesWhenManagedContentChanged(t *testing.T) {
@@ -866,6 +890,9 @@ func TestClusterExtensionInstallReResolvesWhenManagedContentChanged(t *testing.T
 	require.EventuallyWithT(t, func(ct *assert.CollectT) {
 		assert.NoError(ct, globalClient.Get(context.Background(), types.NamespacedName{Name: testConfigMap.Name, Namespace: testConfigMap.Namespace}, testConfigMap))
 	}, pollDuration, pollInterval)
+
+	FetchCatalogdMetricsExportedEndpoint(t)
+	FetchOperatorControllerMetricsExportedEndpoint(t)
 }
 
 func TestClusterExtensionRecoversFromInitialInstallFailedWhenFailureFixed(t *testing.T) {
@@ -959,4 +986,7 @@ func TestClusterExtensionRecoversFromInitialInstallFailedWhenFailureFixed(t *tes
 			assert.Equal(ct, ocv1.ReasonSucceeded, cond.Reason)
 		}
 	}, pollDuration, pollInterval)
+
+	FetchCatalogdMetricsExportedEndpoint(t)
+	FetchOperatorControllerMetricsExportedEndpoint(t)
 }
