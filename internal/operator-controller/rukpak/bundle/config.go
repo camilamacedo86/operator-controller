@@ -23,6 +23,15 @@ type Config struct {
 // - bytes is not a valid YAML/JSON object
 // - bytes is a valid YAML/JSON object but does not follow the registry+v1 schema
 // if bytes is nil it will be treated as an empty json object ({})
+//
+// Namespace resolution order (highest priority first):
+//  1. Explicit target namespaces passed via rendering options (e.g. render.WithTargetNamespaces).
+//  2. The watchNamespace value supplied through the ClusterExtension configuration (this function validates it).
+//  3. The renderer's default derived from the bundle's supported install modes (see render.defaultTargetNamespacesForBundle).
+//
+// Example: when an OwnNamespace-only bundle is configured with watchNamespace equal to the install namespace,
+// option (2) produces a single target namespace equal to the install namespace. If no configuration is provided,
+// option (3) yields nil, leading to a validation error that prompts the user to supply the namespace explicitly.
 func UnmarshalConfig(bytes []byte, rv1 RegistryV1, installNamespace string) (*Config, error) {
 	if bytes == nil {
 		bytes = []byte("{}")
@@ -55,9 +64,26 @@ func validateConfig(config *Config, installNamespace string, bundleInstallModeSe
 		return errors.New(`unknown field "watchNamespace"`)
 	}
 
-	// if watchNamespace is required then ensure that it is set
+	// If watchNamespace is required then ensure that it is set. This happens during configuration unmarshalling,
+	// before render or apply logic executes, so failures are reported as early as possible despite depending on
+	// bundle-provided metadata that is not available to CRD schema validation.
 	if config.WatchNamespace == nil && isWatchNamespaceConfigRequired(bundleInstallModeSet) {
-		return errors.New(`required field "watchNamespace" is missing`)
+		var requiredModes []string
+		if bundleInstallModeSet.Has(v1alpha1.InstallMode{Type: v1alpha1.InstallModeTypeSingleNamespace, Supported: true}) {
+			requiredModes = append(requiredModes, "SingleNamespace")
+		}
+		if bundleInstallModeSet.Has(v1alpha1.InstallMode{Type: v1alpha1.InstallModeTypeOwnNamespace, Supported: true}) {
+			requiredModes = append(requiredModes, "OwnNamespace")
+		}
+		if len(requiredModes) == 0 {
+			return errors.New("watchNamespace is required for the supported install modes")
+		}
+		modePhrase := strings.Join(requiredModes, " or ")
+		modeLabel := "install modes"
+		if len(requiredModes) == 1 {
+			modeLabel = "install mode"
+		}
+		return fmt.Errorf("watchNamespace is required for %s %s", modePhrase, modeLabel)
 	}
 
 	// if watchNamespace is set then ensure it is a valid namespace

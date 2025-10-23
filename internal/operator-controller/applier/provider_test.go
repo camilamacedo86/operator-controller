@@ -321,6 +321,7 @@ func Test_RegistryV1ManifestProvider_SingleOwnNamespaceSupport(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	// Regression guard: SingleNamespace-only bundles still require explicit watchNamespace configuration.
 	t.Run("rejects bundles with {SingleNamespace} install modes when no configuration is given", func(t *testing.T) {
 		expectedWatchNamespace := "some-namespace"
 		provider := applier.RegistryV1ManifestProvider{
@@ -345,7 +346,7 @@ func Test_RegistryV1ManifestProvider_SingleOwnNamespaceSupport(t *testing.T) {
 			},
 		})
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "required field \"watchNamespace\" is missing")
+		require.Contains(t, err.Error(), "watchNamespace is required for SingleNamespace install mode")
 	})
 
 	t.Run("accepts bundles with {OwnNamespace} install modes when the appropriate configuration is given", func(t *testing.T) {
@@ -368,6 +369,39 @@ func Test_RegistryV1ManifestProvider_SingleOwnNamespaceSupport(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	// Checks that OwnNamespace bundles use the install namespace as targetNamespaces
+	// when watchNamespace is the same. (targetNamespaces == [install-namespace] and no error)
+	t.Run("sets targetNamespaces to the install namespace for {OwnNamespace} bundles", func(t *testing.T) {
+		expectedTargetNamespace := "install-namespace"
+		provider := applier.RegistryV1ManifestProvider{
+			BundleRenderer: render.BundleRenderer{
+				ResourceGenerators: []render.ResourceGenerator{
+					func(rv1 *bundle.RegistryV1, opts render.Options) ([]client.Object, error) {
+						require.Equal(t, []string{expectedTargetNamespace}, opts.TargetNamespaces)
+						return nil, nil
+					},
+				},
+			},
+			IsSingleOwnNamespaceEnabled: true,
+		}
+		bundleFS := bundlefs.Builder().WithPackageName("test").
+			WithCSV(clusterserviceversion.Builder().WithInstallModeSupportFor(v1alpha1.InstallModeTypeOwnNamespace).Build()).Build()
+
+		_, err := provider.Get(bundleFS, &ocv1.ClusterExtension{
+			Spec: ocv1.ClusterExtensionSpec{
+				Namespace: expectedTargetNamespace,
+				Config: &ocv1.ClusterExtensionConfig{
+					ConfigType: ocv1.ClusterExtensionConfigTypeInline,
+					Inline: &apiextensionsv1.JSON{
+						Raw: []byte(`{"watchNamespace": "install-namespace"}`),
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+	})
+
+	// Regression guard: OwnNamespace-only bundles still require explicit watchNamespace configuration.
 	t.Run("rejects bundles with {OwnNamespace} install modes when no configuration is given", func(t *testing.T) {
 		provider := applier.RegistryV1ManifestProvider{
 			IsSingleOwnNamespaceEnabled: true,
@@ -380,7 +414,7 @@ func Test_RegistryV1ManifestProvider_SingleOwnNamespaceSupport(t *testing.T) {
 			},
 		})
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "required field \"watchNamespace\" is missing")
+		require.Contains(t, err.Error(), "watchNamespace is required for OwnNamespace install mode")
 	})
 
 	t.Run("rejects bundles with {OwnNamespace} install modes when watchNamespace is not install namespace", func(t *testing.T) {

@@ -159,7 +159,7 @@ func validateTargetNamespaces(rv1 *bundle.RegistryV1, installNamespace string, t
 		// message than just the generic (at least one target namespace must be specified) which would occur
 		// in case only the MultiNamespace install mode is supported by the bundle.
 		// If AllNamespaces mode is supported, the default will be [""] -> watch all namespaces
-		// If only OwnNamespace is supported, the default will be [install-namespace] -> only watch the install/own namespace
+		// If AllNamespaces is not supported, no default is applied and configuration must provide the target namespace(s)
 		if supportedInstallModes.Has(v1alpha1.InstallModeTypeMultiNamespace) {
 			return errors.New("at least one target namespace must be specified")
 		}
@@ -193,6 +193,12 @@ func validateTargetNamespaces(rv1 *bundle.RegistryV1, installNamespace string, t
 func defaultTargetNamespacesForBundle(rv1 *bundle.RegistryV1) []string {
 	supportedInstallModes := supportedBundleInstallModes(rv1)
 
+	// Namespace resolution order (highest priority first):
+	//   1. Explicit target namespaces provided via render options.
+	//   2. watchNamespace inferred from ClusterExtension configuration (see applier.RegistryV1ManifestProvider).
+	//   3. This default derived from the bundle's supported install modes.
+	// The default only applies when AllNamespaces is supported; other install modes require configuration so that
+	// we preserve the user's intent across upgrades.
 	if supportedInstallModes.Has(v1alpha1.InstallModeTypeAllNamespaces) {
 		return []string{corev1.NamespaceAll}
 	}

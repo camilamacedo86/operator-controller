@@ -294,6 +294,28 @@ func Test_BundleRenderer_ValidatesRenderOptions(t *testing.T) {
 	}
 }
 
+func Test_BundleRenderer_UsesExplicitTargetNamespacesForOwnNamespaceBundles(t *testing.T) {
+	expectedTargetNamespace := "install-namespace"
+	renderer := render.BundleRenderer{
+		ResourceGenerators: []render.ResourceGenerator{
+			func(rv1 *bundle.RegistryV1, opts render.Options) ([]client.Object, error) {
+				require.Equal(t, []string{expectedTargetNamespace}, opts.TargetNamespaces)
+				return nil, nil
+			},
+		},
+	}
+	_, err := renderer.Render(
+		bundle.RegistryV1{
+			CSV: clusterserviceversion.Builder().
+				WithName("test").
+				WithInstallModeSupportFor(v1alpha1.InstallModeTypeOwnNamespace).Build(),
+		},
+		expectedTargetNamespace,
+		render.WithTargetNamespaces(expectedTargetNamespace),
+	)
+	require.NoError(t, err)
+}
+
 func Test_BundleRenderer_AppliesUserOptions(t *testing.T) {
 	isOptionApplied := false
 	_, _ = render.BundleRenderer{}.Render(bundle.RegistryV1{}, "install-namespace", func(options *render.Options) {

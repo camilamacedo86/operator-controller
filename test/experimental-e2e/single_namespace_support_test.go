@@ -176,7 +176,7 @@ func TestClusterExtensionSingleNamespaceSupport(t *testing.T) {
 		require.NotNil(ct, cond)
 		require.Equal(ct, metav1.ConditionTrue, cond.Status)
 		require.Equal(ct, ocv1.ReasonRetrying, cond.Reason)
-		require.Contains(ct, cond.Message, "required field \"watchNamespace\" is missing")
+		require.Contains(ct, cond.Message, "watchNamespace is required for SingleNamespace install mode")
 	}, pollDuration, pollInterval)
 
 	t.Log("By updating the ClusterExtension configuration with a watchNamespace")
@@ -323,7 +323,7 @@ func TestClusterExtensionOwnNamespaceSupport(t *testing.T) {
 		require.NotNil(ct, cond)
 		require.Equal(ct, metav1.ConditionTrue, cond.Status)
 		require.Equal(ct, ocv1.ReasonRetrying, cond.Reason)
-		require.Contains(ct, cond.Message, "required field \"watchNamespace\" is missing")
+		require.Contains(ct, cond.Message, "watchNamespace is required for OwnNamespace install mode")
 	}, pollDuration, pollInterval)
 
 	t.Log("By updating the ClusterExtension configuration with a watchNamespace other than the install namespace")

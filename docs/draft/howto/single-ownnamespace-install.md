@@ -58,7 +58,7 @@ kubectl rollout status -n olmv1-system deployment/operator-controller-controller
 A `ClusterExtension` can be configured to install bundle in `Single-` or `OwnNamespace` mode through the
 `.spec.config.inline.watchNamespace` property. The *installMode* is inferred in the following way:
 
- - *AllNamespaces*: `watchNamespace` is empty, or not set
+- *AllNamespaces*: `watchNamespace` is empty, or not set **and** the bundle supports the AllNamespaces install mode. Bundles that lack AllNamespaces support now require explicit configuration.
  - *OwnNamespace*: `watchNamespace` is the install namespace (i.e. `.spec.namespace`)
  - *SingleNamespace*: `watchNamespace` *not* the install namespace
 
