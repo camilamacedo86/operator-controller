@@ -69,7 +69,7 @@ func (r *RegistryV1ManifestProvider) Get(bundleFS fs.FS, ext *ocv1.ClusterExtens
 	}
 
 	if r.IsSingleOwnNamespaceEnabled {
-		bundleConfig, err := bundle.UnmarshallConfig(ext.ExtensionConfigBytes(), rv1, ext.Spec.Namespace)
+		bundleConfig, err := bundle.UnmarshalConfig(ext.ExtensionConfigBytes(), rv1, ext.Spec.Namespace)
 		if err != nil {
 			return nil, fmt.Errorf("invalid bundle configuration: %w", err)
 		}
