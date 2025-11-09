@@ -69,19 +69,19 @@ func (r *RegistryV1ManifestProvider) Get(bundleFS fs.FS, ext *ocv1.ClusterExtens
 	}
 
 	if r.IsSingleOwnNamespaceEnabled {
-		bundleConfigBytes := extensionConfigBytes(ext)
-		// treat no config as empty to properly validate the configuration
-		// e.g. ensure that validation catches missing required fields
-		if bundleConfigBytes == nil {
-			bundleConfigBytes = []byte(`{}`)
-		}
-		bundleConfig, err := bundle.UnmarshalConfig(bundleConfigBytes, rv1, ext.Spec.Namespace)
+		schema, err := rv1.Get()
 		if err != nil {
-			return nil, fmt.Errorf("invalid bundle configuration: %w", err)
+			return nil, fmt.Errorf("error getting configuration schema: %w", err)
 		}
 
-		if bundleConfig != nil && bundleConfig.WatchNamespace != nil {
-			opts = append(opts, render.WithTargetNamespaces(*bundleConfig.WatchNamespace))
+		bundleConfigBytes := extensionConfigBytes(ext)
+		bundleConfig, err := bundle.UnmarshalConfig(bundleConfigBytes, schema, ext.Spec.Namespace)
+		if err != nil {
+			return nil, fmt.Errorf("invalid ClusterExtension configuration: %w", err)
+		}
+
+		if watchNS := bundleConfig.GetWatchNamespace(); watchNS != nil {
+			opts = append(opts, render.WithTargetNamespaces(*watchNS))
 		}
 	}
 

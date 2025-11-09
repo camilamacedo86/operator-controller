@@ -97,7 +97,7 @@ func Test_RegistryV1ManifestProvider_Integration(t *testing.T) {
 
 		_, err := provider.Get(bundleFS, ext)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "invalid bundle configuration")
+		require.Contains(t, err.Error(), "invalid ClusterExtension configuration")
 	})
 
 	t.Run("returns rendered manifests", func(t *testing.T) {
@@ -392,7 +392,7 @@ func Test_RegistryV1ManifestProvider_SingleOwnNamespaceSupport(t *testing.T) {
 			},
 		})
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "invalid 'watchNamespace' \"not-install-namespace\": must be install namespace (install-namespace)")
+		require.Contains(t, err.Error(), "invalid ClusterExtension configuration: invalid configuration:")
 	})
 
 	t.Run("rejects bundles without AllNamespaces, SingleNamespace, or OwnNamespace install mode support when Single/OwnNamespace install mode support is enabled", func(t *testing.T) {
