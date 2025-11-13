@@ -268,7 +268,7 @@ func Test_UnmarshalConfig(t *testing.T) {
 			expectedWatchNamespace: nil,
 		},
 		{
-			name:                   "handles empty installNamespace gracefully when OwnNamespace only",
+			name:                   "skips validation when installNamespace is empty for OwnNamespace only",
 			supportedInstallModes:  []v1alpha1.InstallModeType{v1alpha1.InstallModeTypeOwnNamespace},
 			rawConfig:              []byte(`{"watchNamespace": "valid-ns"}`),
 			installNamespace:       "",

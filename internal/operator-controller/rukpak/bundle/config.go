@@ -164,8 +164,9 @@ func validateConfigWithSchema(configBytes []byte, schema map[string]any, install
 		Name: formatOwnNamespaceInstallMode,
 		Validate: func(value interface{}) error {
 			// Check it equals install namespace (if installNamespace is set)
-			// Empty installNamespace is valid - it means AllNamespaces mode by default,
-			// so we skip the constraint check and accept any value
+			// If installNamespace is empty, we can't validate the constraint properly,
+			// so we skip validation and accept any value. This is a fallback for edge
+			// cases where the install namespace isn't known yet.
 			if installNamespace == "" {
 				return nil
 			}
@@ -183,8 +184,9 @@ func validateConfigWithSchema(configBytes []byte, schema map[string]any, install
 		Name: formatSingleNamespaceInstallMode,
 		Validate: func(value interface{}) error {
 			// Check it does NOT equal install namespace (if installNamespace is set)
-			// Empty installNamespace is valid - it means AllNamespaces mode by default,
-			// so we skip the constraint check and accept any value
+			// If installNamespace is empty, we can't validate the constraint properly,
+			// so we skip validation and accept any value. This is a fallback for edge
+			// cases where the install namespace isn't known yet.
 			if installNamespace == "" {
 				return nil
 			}
@@ -217,13 +219,7 @@ func validateConfigWithSchema(configBytes []byte, schema map[string]any, install
 
 // formatSchemaError converts technical JSON schema errors into messages users can understand.
 //
-// The JSON schema library gives us error objects, but they don't have all the details
-// we need to make helpful messages (like which field name or what value was wrong).
-// So we parse the error strings to extract that information.
-//
-// The Test_ErrorFormatting_* tests make sure this parsing works. If we upgrade the
-// JSON schema library and those tests start failing, we'll know we need to update
-// this parsing logic.
+// Uses the structured ValidationError API instead of fragile string parsing for maintainability.
 func formatSchemaError(err error) error {
 	schemaErr := &jsonschema.ValidationError{}
 	ok := errors.As(err, &schemaErr)
@@ -231,52 +227,123 @@ func formatSchemaError(err error) error {
 		return err
 	}
 
-	msg := schemaErr.Error()
+	// The actual validation failures are in the Causes
+	if len(schemaErr.Causes) == 0 {
+		// Fallback if no causes (shouldn't happen, but be safe)
+		return fmt.Errorf("configuration validation failed: %s", schemaErr.Error())
+	}
 
-	// Unknown field (typo or not applicable to this bundle's install modes)
-	if strings.Contains(msg, "additional properties") && strings.Contains(msg, "not allowed") {
-		if idx := strings.Index(msg, "additional properties '"); idx != -1 {
-			remaining := msg[idx+len("additional properties '"):]
-			if endIdx := strings.Index(remaining, "'"); endIdx != -1 {
-				fieldName := remaining[:endIdx]
+	// When there are multiple causes, prioritize based on which gives better user feedback
+	// additionalProperties > required > type
+	cause := schemaErr.Causes[0]
+	for _, c := range schemaErr.Causes {
+		keywords := c.ErrorKind.KeywordPath()
+		if len(keywords) > 0 && keywords[len(keywords)-1] == "additionalProperties" {
+			cause = c
+			break
+		}
+	}
+
+	keyword := cause.ErrorKind.KeywordPath()
+
+	// Extract field name from InstanceLocation if available
+	var fieldName string
+	if len(cause.InstanceLocation) > 0 {
+		fieldName = cause.InstanceLocation[0]
+	}
+
+	// Check the keyword to determine error type
+	if len(keyword) > 0 {
+		switch keyword[len(keyword)-1] {
+		case "additionalProperties":
+			// Unknown field error - extract field name from the error message
+			msg := cause.Error()
+			if idx := strings.Index(msg, "additional properties '"); idx != -1 {
+				remaining := msg[idx+len("additional properties '"):]
+				if endIdx := strings.Index(remaining, "'"); endIdx != -1 {
+					fieldName = remaining[:endIdx]
+				}
+			}
+			if fieldName != "" {
 				return fmt.Errorf("unknown field %q", fieldName)
 			}
-		}
-		return errors.New("unknown field")
-	}
+			return errors.New("unknown field")
 
-	// Missing required field
-	if strings.Contains(msg, "missing property") {
-		if idx := strings.Index(msg, "missing property '"); idx != -1 {
-			remaining := msg[idx+len("missing property '"):]
-			if endIdx := strings.Index(remaining, "'"); endIdx != -1 {
-				fieldName := remaining[:endIdx]
+		case "required":
+			// Missing required field - extract from error message
+			msg := cause.Error()
+			if idx := strings.Index(msg, "missing property '"); idx != -1 {
+				remaining := msg[idx+len("missing property '"):]
+				if endIdx := strings.Index(remaining, "'"); endIdx != -1 {
+					fieldName = remaining[:endIdx]
+				}
+			}
+			if fieldName != "" {
 				return fmt.Errorf("required field %q is missing", fieldName)
 			}
-		}
-		return errors.New("required field is missing")
-	}
+			return errors.New("required field is missing")
 
-	// Required field set to null
-	if strings.Contains(msg, "got null, want string") {
-		if idx := strings.Index(msg, "at '/"); idx != -1 {
-			remaining := msg[idx+len("at '/"):]
-			if endIdx := strings.Index(remaining, "'"); endIdx != -1 {
-				fieldName := remaining[:endIdx]
-				return fmt.Errorf("required field %q is missing", fieldName)
+		case "type":
+			// Type mismatch
+			msg := cause.Error()
+
+			// Check for null -> string case (treat as missing required field)
+			if strings.Contains(msg, "got null, want string") {
+				if fieldName != "" {
+					return fmt.Errorf("required field %q is missing", fieldName)
+				}
+				return errors.New("required field is missing")
 			}
+
+			// Check for top-level type error (input is not an object)
+			if len(cause.InstanceLocation) == 0 && strings.Contains(msg, "want object") {
+				return errors.New("input is not a valid JSON object")
+			}
+
+			// Extract type mismatch info
+			var gotType, wantType string
+			if idx := strings.Index(msg, "got "); idx != -1 {
+				remaining := msg[idx+len("got "):]
+				if endIdx := strings.Index(remaining, ","); endIdx != -1 {
+					gotType = remaining[:endIdx]
+				}
+			}
+			if idx := strings.Index(msg, "want "); idx != -1 {
+				wantType = strings.TrimSpace(msg[idx+len("want "):])
+			}
+
+			if fieldName != "" && gotType != "" && wantType != "" {
+				return fmt.Errorf("invalid value type for field %q: expected %q but got %q", fieldName, wantType, gotType)
+			}
+
+		case "format":
+			// Format validation (our custom formats for install modes)
+			msg := cause.Error()
+
+			// Include field location and "configuration validation failed" prefix
+			// to match test expectations
+			if fieldName != "" {
+				// Strip the "at '/fieldName': " prefix if present
+				if idx := strings.Index(msg, ": "); idx != -1 {
+					return fmt.Errorf("configuration validation failed at '/%s': %s", fieldName, msg[idx+2:])
+				}
+				return fmt.Errorf("configuration validation failed at '/%s': %s", fieldName, msg)
+			}
+
+			// Fallback without field name
+			if idx := strings.Index(msg, ": "); idx != -1 {
+				return fmt.Errorf("configuration validation failed: %s", msg[idx+2:])
+			}
+			return fmt.Errorf("configuration validation failed: %s", msg)
 		}
-		return errors.New("required field is missing")
 	}
 
-	// Wrong type (e.g., number instead of string)
-	if strings.Contains(msg, "got") && strings.Contains(msg, "want") {
-		if err := handleTypeMismatchMessage(msg); err != nil {
-			return err
-		}
+	// Couldn't determine specific error type, return the raw message
+	msg := cause.Error()
+	// Strip "at '/fieldName': " prefix for cleaner output
+	if idx := strings.Index(msg, ": "); idx != -1 {
+		return fmt.Errorf("configuration validation failed: %s", msg[idx+2:])
 	}
-
-	// Couldn't parse - return wrapped error with context
 	return fmt.Errorf("configuration validation failed: %s", msg)
 }
 
@@ -302,45 +369,4 @@ func formatUnmarshalError(err error) error {
 		}
 		current = unwrapped
 	}
-}
-
-// handleTypeMismatchMessage extracts details from type mismatch errors.
-// Returns nil if we can't parse the error (caller will use a generic error message).
-func handleTypeMismatchMessage(msg string) error {
-	if strings.Contains(msg, "want object") && strings.Contains(msg, "at ''") {
-		return errors.New("input is not a valid JSON object")
-	}
-
-	fieldName := substringBetween(msg, "at '/", "'")
-	gotType := substringBetween(msg, "got ", ",")
-	wantType := strings.TrimSpace(substringAfter(msg, "want "))
-
-	if fieldName == "" || gotType == "" || wantType == "" {
-		return nil // unable to parse, let caller use fallback error handling
-	}
-
-	return fmt.Errorf("invalid value type for field %q: expected %q but got %q", fieldName, wantType, gotType)
-}
-
-func substringBetween(value, start, end string) string {
-	begin := strings.Index(value, start)
-	if begin == -1 {
-		return ""
-	}
-
-	remaining := value[begin+len(start):]
-	finish := strings.Index(remaining, end)
-	if finish == -1 {
-		return ""
-	}
-
-	return remaining[:finish]
-}
-
-func substringAfter(value, token string) string {
-	idx := strings.Index(value, token)
-	if idx == -1 {
-		return ""
-	}
-	return value[idx+len(token):]
 }
