@@ -217,12 +217,11 @@ func SetDeprecationStatus(ext *ocv1.ClusterExtension, installedBundleName string
 	channelMessages := collectDeprecationMessages(info.ChannelEntries)
 	bundleMessages := collectDeprecationMessages(info.BundleEntries)
 
-	// Clear all deprecation conditions first, then only add the ones we need.
+	// Strategy: Only remove conditions when we're NOT going to re-add them.
+	// If we're setting a condition, call SetStatusCondition directly - it preserves
+	// lastTransitionTime when status/reason/message haven't changed, preventing
+	// infinite reconciliation loops.
 	// Absence of a deprecation condition means "not deprecated" - keeps output clean.
-	apimeta.RemoveStatusCondition(&ext.Status.Conditions, ocv1.TypeDeprecated)
-	apimeta.RemoveStatusCondition(&ext.Status.Conditions, ocv1.TypePackageDeprecated)
-	apimeta.RemoveStatusCondition(&ext.Status.Conditions, ocv1.TypeChannelDeprecated)
-	apimeta.RemoveStatusCondition(&ext.Status.Conditions, ocv1.TypeBundleDeprecated)
 
 	if !hasCatalogData {
 		// When catalog is unavailable, set all to Unknown.
@@ -264,8 +263,8 @@ func SetDeprecationStatus(ext *ocv1.ClusterExtension, installedBundleName string
 		return
 	}
 
-	// Only add conditions when there's something to report (True or Unknown states).
-	// False (not deprecated) is represented by absence of the condition.
+	// Handle catalog data available: set conditions to True when deprecated,
+	// or remove them when not deprecated (absence = not deprecated).
 	messages := slices.Concat(packageMessages, channelMessages, bundleMessages)
 	if len(messages) > 0 {
 		SetStatusCondition(&ext.Status.Conditions, metav1.Condition{
@@ -275,6 +274,9 @@ func SetDeprecationStatus(ext *ocv1.ClusterExtension, installedBundleName string
 			Message:            strings.Join(messages, "\n"),
 			ObservedGeneration: ext.GetGeneration(),
 		})
+	} else {
+		// Only remove if we're not setting it - prevents unnecessary lastTransitionTime updates
+		apimeta.RemoveStatusCondition(&ext.Status.Conditions, ocv1.TypeDeprecated)
 	}
 
 	if len(packageMessages) > 0 {
@@ -285,6 +287,8 @@ func SetDeprecationStatus(ext *ocv1.ClusterExtension, installedBundleName string
 			Message:            strings.Join(packageMessages, "\n"),
 			ObservedGeneration: ext.GetGeneration(),
 		})
+	} else {
+		apimeta.RemoveStatusCondition(&ext.Status.Conditions, ocv1.TypePackageDeprecated)
 	}
 
 	if len(channelMessages) > 0 {
@@ -295,6 +299,8 @@ func SetDeprecationStatus(ext *ocv1.ClusterExtension, installedBundleName string
 			Message:            strings.Join(channelMessages, "\n"),
 			ObservedGeneration: ext.GetGeneration(),
 		})
+	} else {
+		apimeta.RemoveStatusCondition(&ext.Status.Conditions, ocv1.TypeChannelDeprecated)
 	}
 
 	// BundleDeprecated: Unknown when no bundle installed, True when deprecated, absent otherwise
@@ -314,6 +320,8 @@ func SetDeprecationStatus(ext *ocv1.ClusterExtension, installedBundleName string
 			Message:            strings.Join(bundleMessages, "\n"),
 			ObservedGeneration: ext.GetGeneration(),
 		})
+	} else {
+		apimeta.RemoveStatusCondition(&ext.Status.Conditions, ocv1.TypeBundleDeprecated)
 	}
 }
 

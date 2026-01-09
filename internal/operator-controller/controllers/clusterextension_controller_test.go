@@ -15,6 +15,7 @@ import (
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage/driver"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -1958,6 +1959,209 @@ func TestSetDeprecationStatus(t *testing.T) {
 			assert.Empty(t, cmp.Diff(tc.expectedClusterExtension, tc.clusterExtension, cmpopts.IgnoreFields(metav1.Condition{}, "Message", "LastTransitionTime")))
 		})
 	}
+}
+
+// TestSetDeprecationStatus_NoInfiniteReconcileLoop verifies that calling SetDeprecationStatus
+// multiple times with the same inputs does not cause infinite reconciliation loops.
+//
+// The issue: If we always remove and re-add conditions, lastTransitionTime updates every time,
+// which causes DeepEqual to fail, triggering another reconcile indefinitely.
+//
+// The fix: Only remove conditions when we're NOT re-adding them. When setting a condition,
+// call SetStatusCondition directly - it preserves lastTransitionTime when status/reason/message
+// haven't changed.
+func TestSetDeprecationStatus_NoInfiniteReconcileLoop(t *testing.T) {
+	tests := []struct {
+		name                  string
+		installedBundleName   string
+		deprecation           *declcfg.Deprecation
+		hasCatalogData        bool
+		setupConditions       func(*ocv1.ClusterExtension)
+		expectConditionsCount int
+		description           string
+	}{
+		{
+			name:                "deprecated package - should stabilize after first reconcile",
+			installedBundleName: "test.v1.0.0",
+			deprecation: &declcfg.Deprecation{
+				Entries: []declcfg.DeprecationEntry{
+					{
+						Reference: declcfg.PackageScopedReference{
+							Schema: declcfg.SchemaPackage,
+						},
+						Message: "package is deprecated",
+					},
+				},
+			},
+			hasCatalogData: true,
+			setupConditions: func(ext *ocv1.ClusterExtension) {
+				// No conditions initially
+			},
+			expectConditionsCount: 2, // Deprecated and PackageDeprecated
+			description:           "First call adds conditions, second call preserves lastTransitionTime",
+		},
+		{
+			name:                "not deprecated - migration from False to absent",
+			installedBundleName: "", // No bundle installed
+			deprecation:         nil,
+			hasCatalogData:      true,
+			setupConditions: func(ext *ocv1.ClusterExtension) {
+				// Simulate old behavior: False conditions present
+				apimeta.SetStatusCondition(&ext.Status.Conditions, metav1.Condition{
+					Type:               ocv1.TypeDeprecated,
+					Status:             metav1.ConditionFalse,
+					Reason:             ocv1.ReasonDeprecated,
+					Message:            "",
+					ObservedGeneration: 1,
+				})
+				apimeta.SetStatusCondition(&ext.Status.Conditions, metav1.Condition{
+					Type:               ocv1.TypePackageDeprecated,
+					Status:             metav1.ConditionFalse,
+					Reason:             ocv1.ReasonDeprecated,
+					Message:            "",
+					ObservedGeneration: 1,
+				})
+			},
+			expectConditionsCount: 1, // Only BundleDeprecated Unknown (no bundle installed)
+			description:           "Migrates from False to absent, then stabilizes",
+		},
+		{
+			name:                "catalog unavailable - should stabilize with Unknown conditions",
+			installedBundleName: "test.v1.0.0",
+			deprecation:         nil,
+			hasCatalogData:      false,
+			setupConditions: func(ext *ocv1.ClusterExtension) {
+				// No conditions initially
+			},
+			expectConditionsCount: 4, // All four Unknown conditions
+			description:           "Sets Unknown conditions, then preserves them",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ext := &ocv1.ClusterExtension{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 1,
+				},
+				Status: ocv1.ClusterExtensionStatus{
+					Conditions: []metav1.Condition{},
+				},
+			}
+
+			// Setup initial conditions if specified
+			if tt.setupConditions != nil {
+				tt.setupConditions(ext)
+			}
+
+			// First reconcile: should add/update conditions
+			controllers.SetDeprecationStatus(ext, tt.installedBundleName, tt.deprecation, tt.hasCatalogData)
+
+			firstReconcileConditions := make([]metav1.Condition, len(ext.Status.Conditions))
+			copy(firstReconcileConditions, ext.Status.Conditions)
+
+			// Verify expected number of conditions
+			deprecationConditions := filterDeprecationConditions(ext.Status.Conditions)
+			require.Len(t, deprecationConditions, tt.expectConditionsCount,
+				"First reconcile should have %d deprecation conditions", tt.expectConditionsCount)
+
+			// Second reconcile: should preserve lastTransitionTime (no changes)
+			controllers.SetDeprecationStatus(ext, tt.installedBundleName, tt.deprecation, tt.hasCatalogData)
+
+			secondReconcileConditions := ext.Status.Conditions
+
+			// Verify conditions are identical (including lastTransitionTime)
+			require.Len(t, secondReconcileConditions, len(firstReconcileConditions),
+				"Number of conditions should remain the same")
+
+			for i, firstCond := range firstReconcileConditions {
+				secondCond := secondReconcileConditions[i]
+				require.Equal(t, firstCond.Type, secondCond.Type, "Condition type should match")
+				require.Equal(t, firstCond.Status, secondCond.Status, "Condition status should match")
+				require.Equal(t, firstCond.Reason, secondCond.Reason, "Condition reason should match")
+				require.Equal(t, firstCond.Message, secondCond.Message, "Condition message should match")
+
+				// This is the critical check: lastTransitionTime should NOT change
+				require.Equal(t, firstCond.LastTransitionTime, secondCond.LastTransitionTime,
+					"lastTransitionTime should be preserved (prevents infinite reconcile loop)")
+			}
+
+			// Third reconcile: verify it remains stable
+			controllers.SetDeprecationStatus(ext, tt.installedBundleName, tt.deprecation, tt.hasCatalogData)
+
+			thirdReconcileConditions := ext.Status.Conditions
+			require.Len(t, thirdReconcileConditions, len(secondReconcileConditions),
+				"Conditions should remain stable after multiple reconciles")
+
+			for i, secondCond := range secondReconcileConditions {
+				thirdCond := thirdReconcileConditions[i]
+				require.Equal(t, secondCond.LastTransitionTime, thirdCond.LastTransitionTime,
+					"lastTransitionTime should remain stable across reconciles")
+			}
+		})
+	}
+}
+
+// TestSetDeprecationStatus_StatusChangesOnlyWhenNeeded verifies that calling SetDeprecationStatus
+// only modifies the status when actual deprecation state changes, not on every reconcile.
+func TestSetDeprecationStatus_StatusChangesOnlyWhenNeeded(t *testing.T) {
+	ext := &ocv1.ClusterExtension{
+		ObjectMeta: metav1.ObjectMeta{
+			Generation: 1,
+		},
+		Status: ocv1.ClusterExtensionStatus{
+			Conditions: []metav1.Condition{},
+		},
+	}
+
+	// Scenario 1: Package becomes deprecated
+	deprecation := &declcfg.Deprecation{
+		Entries: []declcfg.DeprecationEntry{
+			{
+				Reference: declcfg.PackageScopedReference{Schema: declcfg.SchemaPackage},
+				Message:   "package is deprecated",
+			},
+		},
+	}
+
+	// First reconcile: add deprecation condition
+	controllers.SetDeprecationStatus(ext, "test.v1.0.0", deprecation, true)
+	statusAfterFirstReconcile := ext.Status.DeepCopy()
+
+	// Second reconcile: same deprecation state
+	controllers.SetDeprecationStatus(ext, "test.v1.0.0", deprecation, true)
+	statusAfterSecondReconcile := ext.Status.DeepCopy()
+
+	// Status should be semantically equal (DeepEqual would return true)
+	require.True(t, equality.Semantic.DeepEqual(statusAfterFirstReconcile, statusAfterSecondReconcile),
+		"Status should not change when deprecation state is unchanged")
+
+	// Scenario 2: Deprecation is resolved (package no longer deprecated)
+	controllers.SetDeprecationStatus(ext, "test.v1.0.0", nil, true)
+	statusAfterResolution := ext.Status.DeepCopy()
+
+	// Status should have changed (conditions removed)
+	require.False(t, equality.Semantic.DeepEqual(statusAfterSecondReconcile, statusAfterResolution),
+		"Status should change when deprecation is resolved")
+
+	// Scenario 3: Verify resolution is stable
+	controllers.SetDeprecationStatus(ext, "test.v1.0.0", nil, true)
+	statusAfterFourthReconcile := ext.Status.DeepCopy()
+
+	require.True(t, equality.Semantic.DeepEqual(statusAfterResolution, statusAfterFourthReconcile),
+		"Status should remain stable after deprecation is resolved")
+}
+
+// filterDeprecationConditions returns only the deprecation-related conditions
+func filterDeprecationConditions(conditions []metav1.Condition) []metav1.Condition {
+	var result []metav1.Condition
+	for _, cond := range conditions {
+		switch cond.Type {
+		case ocv1.TypeDeprecated, ocv1.TypePackageDeprecated, ocv1.TypeChannelDeprecated, ocv1.TypeBundleDeprecated:
+			result = append(result, cond)
+		}
+	}
+	return result
 }
 
 type MockActionGetter struct {
